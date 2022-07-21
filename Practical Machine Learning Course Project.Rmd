@@ -1,0 +1,180 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Tran Bich Nguyen"
+date: '7/21/2022'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###   Background
+
+This report is based on data derived from http://groupware.les.inf.puc-rio.br/har, where data was collected from a series of accelerometers worn on the belt, forearm, arm, and dumbell of 6 participants. Subjects of the study were asked to perform barbell lifts correctly and incorrectly in 5 different ways, and the purpose of this report is to accurately predict the manner in which the participants did the exercise.   
+
+
+###    Loading Libraries
+
+Loading relevant libraries necessary to performing exploratory data analyses.
+
+```{r libraries, echo = TRUE}
+
+        library(caret)
+
+        library(rattle)
+
+```
+
+###   Downloading and Loading Data
+
+Downloading and loading data of interest. 
+
+```{r download, echo = TRUE}
+
+        train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+        
+        test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+        
+        download.file(train_url, destfile = "pml_training.csv")
+        
+        download.file(test_url, destfile = "pml_testing.csv")
+
+
+        train_data <- read.csv("pml_training.csv")
+        
+        test_data <- read.csv("pml_testing.csv")
+                
+```
+
+###   Data Cleaning
+
+Removing columns with NA values and near zero variance variables. 
+
+```{r cleaning, echo = TRUE}
+
+        train_na <- train_data[, colMeans(is.na(train_data)) < .9]
+
+        train_clean <- train_na[, -c(1:7)]
+
+        zero_train <- nearZeroVar(train_clean)
+        
+        train_dataset <- train_clean[, -zero_train]
+
+```
+
+###   Data Partitioning
+
+Partitioning the dataset. 
+
+```{r partition, echo = TRUE}
+
+        set.seed(1)
+        
+        
+        train_partition <- createDataPartition(train_dataset$classe, 
+                                               p = 0.6, 
+                                               list = FALSE) 
+        
+        training <- train_dataset[train_partition, ]
+        
+        testing <- train_dataset[-train_partition, ]
+
+```
+
+###   Gradient Boosting Model
+
+```{r boosting, echo = TRUE}
+
+        validation_folds <- trainControl(method = "cv", number = 4)
+        
+
+        gradient_boosting <- train(classe ~., 
+                                   method = "gbm", 
+                                   trControl = validation_folds,
+                                   data = training, 
+                                   tuneLength = 5,
+                                   verbose = FALSE)
+        
+        
+        plot(gradient_boosting)
+        
+        
+        boosting_prediction <- predict(gradient_boosting, newdata = testing)
+        
+        boosting_matrix <- confusionMatrix(boosting_prediction, factor(testing$classe))
+        
+        
+        boosting_matrix$table
+        
+        boosting_matrix$overall[1]
+        
+```
+The accuracy of the gradient boosting model with a cross validation of 4 steps appears to be quite high (0.9875). If the accuracy of subsequent models do not surpass this value, then the gradient boosting model will be applied to the final test dataset. 
+
+
+###   Decision Tree
+
+```{r tree, echo = TRUE}
+
+        decision_tree <- train(classe ~., 
+                               method = "rpart", 
+                               trControl = validation_folds, 
+                               data = training, 
+                               tuneLength = 5)
+        
+        fancyRpartPlot(decision_tree$finalModel)
+        
+        
+        rpart_prediction <- predict(decision_tree, newdata = testing)
+        
+        rpart_matrix <- confusionMatrix(rpart_prediction, factor(testing$classe))
+
+        
+        rpart_matrix$table
+        
+        rpart_matrix$overall[1]
+        
+```
+
+The accuracy for the decision tree model appears to be extremely low (0.5438), in comparison to the gradient boosting model (0.9875). Due to the low accuracy rate for this model, when used in conjunction with the training dataset, the decision tree model will not be applied to the final test dataset. 
+
+
+###   Random Forest Model
+
+```{r forest, echo = TRUE}
+
+        random_forest <- train(classe ~., 
+                               method = "rf", 
+                               trControl = validation_folds, 
+                               data = training, 
+                               tuneLength = 5, 
+                               verbose = FALSE)
+        
+        
+        plot(random_forest)
+
+
+        forest_prediction <- predict(random_forest, newdata = testing)
+        
+        forest_matrix <- confusionMatrix(forest_prediction, factor(testing$classe))
+
+        
+        forest_matrix$table
+        
+        forest_matrix$overall[1]
+        
+```
+
+Since the random forest model yields the most accurate results (0.9932), when compared with the gradient boosting model (0.9875) and the decision tree model (0.5438), the aforementioned model will be applied to the final test dataset.
+
+###   Test Predictions
+
+```{r test, echo = TRUE}
+
+       test_prediction <- predict(random_forest, newdata = test_data)
+
+      
+        print(test_prediction)
+
+```
